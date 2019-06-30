@@ -256,9 +256,16 @@ class FindVigenereOperation : Operation {
 func vigenereUnknownKey(_ str: String, _ dictionary: Set<String>) throws -> String {
 	var message: String?
 	let queue = OperationQueue()
+	let dq = DispatchQueue(label: "reconciliation")
 	let foundKeyHandler = {  (_ k: [CChar], _ m: String) in
-		message = m
-		queue.cancelAllOperations()
+		dq.sync{
+			guard message == nil else {
+				print("Found (at least) two matching messages!")
+				return
+			}
+			message = m
+			queue.cancelAllOperations()
+		}
 	}
 	for i in 0..<13 {
 		queue.addOperation(FindVigenereOperation(string: str, minK1: i*2, maxK1: (i+1)*2, dictionary: dictionary, foundKeyHandler: foundKeyHandler))
