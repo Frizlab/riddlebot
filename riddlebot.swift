@@ -178,6 +178,7 @@ func caesar(_ str: String, _ delta: CChar) -> String {
 
 func vigenere(_ str: String, _ deltas: [CChar]) -> String {
 	assert(deltas.count > 0)
+	assert(deltas.first{ $0 >= 26 || $0 <= -26 } == nil)
 	var ret = [CChar]()
 	
 	var i = 0
@@ -241,8 +242,8 @@ class FindVigenereOperation : Operation {
 //						print("HHH: \(matchingWordsCount)")
 //						print("JJJ: \(decryptedTestWords)")
 //						print("LLL: \(decryptedTest)")
-						/* We assume we have a valid text if more than 25% of the words match a real word */
-						if matchingWordsCount > (decryptedTestWords.count*25)/100 {
+						/* We assume we have a valid text if more than 50% of the words match a real word */
+						if matchingWordsCount > (decryptedTestWords.count*50)/100 {
 							foundKey(k.map{ -$0 }, decryptedTest)
 							return
 						}
