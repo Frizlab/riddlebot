@@ -185,7 +185,7 @@ let baseURL = URL(string: "https://api.noopschallenge.com/")!
 let session = URLSession(configuration: URLSessionConfiguration.ephemeral)
 
 do {
-	let loginRequest = LoginRequest(login: "frizlab")
+	let loginRequest = LoginRequest(login: CommandLine.arguments[1])
 	print("Logging in...")
 	let loginResponse: LoginResponse = try session.synchronousFetch(url: URL(string: "/riddlebot/start", relativeTo: baseURL)!, httpMethod: "POST", httpBodyObject: loginRequest)
 
