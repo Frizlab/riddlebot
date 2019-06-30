@@ -283,7 +283,8 @@ func vigenereUnknownKey(_ str: String, _ dictionary: Set<String>) throws -> Stri
 
 
 let baseURL = URL(string: "https://api.noopschallenge.com/")!
-let session = URLSession(configuration: URLSessionConfiguration.ephemeral)
+//let session = URLSession(configuration: URLSessionConfiguration.ephemeral)
+let session = URLSession(configuration: URLSessionConfiguration.default) // ephemeral not implemented on Linux
 
 do {
 	let date = Date()
