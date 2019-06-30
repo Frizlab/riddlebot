@@ -1,5 +1,7 @@
 ![riddlebot](https://user-images.githubusercontent.com/212941/60119479-6713fc00-9733-11e9-93c6-91a773fc0270.png)
 
+Frizlab’s certificate 😊: https://api.noopschallenge.com/riddlebot/certificate/2pPnB38MI7qwY9-Vk37EaLuiaVt8p90XZtDmfW2LJlE
+
 # 👋 Meet Riddlebot
 
 Riddlebot loves puzzles, riddles, and most of all: [ciphers](https://en.wikipedia.org/wiki/Cipher).
