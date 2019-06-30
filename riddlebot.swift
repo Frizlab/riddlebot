@@ -158,16 +158,25 @@ struct Riddle : Decodable {
 	
 }
 
-struct RiddleAnswerResponse : Decodable {
+enum RiddleAnswerResponse : Decodable {
 	
-	enum RiddleAnswerResponseResult : String, Codable {
-		
-		case correct
-		
+	case correct(nextRiddlePath: String)
+	case completed(certificatePath: String)
+	
+	init(from decoder: Decoder) throws {
+		let container = try decoder.container(keyedBy: CodingKeys.self)
+		switch try container.decode(String.self, forKey: .result) {
+		case "correct":   self = try .correct(nextRiddlePath: container.decode(String.self, forKey: .nextRiddlePath))
+		case "completed": self = try .completed(certificatePath: container.decode(String.self, forKey: .certificate))
+		default: throw NSError(domain: "riddlebot", code: 7, userInfo: nil)
+		}
 	}
 	
-	var result: RiddleAnswerResponseResult
-	var nextRiddlePath: String?
+	private enum CodingKeys : String, CodingKey {
+		case result
+		case nextRiddlePath
+		case certificate
+	}
 	
 }
 
@@ -238,15 +247,16 @@ class FindVigenereOperation : Operation {
 //						q.sync{ n+=1 }
 						if isCancelled {return}
 						let k = [-CChar(k1), -CChar(k2), -CChar(k3), -CChar(k4)]
-						let decryptedTest = vigenere(str, k, incrementCounterForNonLetters: false)
+						let decryptedTest = String(vigenere(str, k, incrementCounterForNonLetters: false).reversed())
 						let decryptedTestWords = decryptedTest.split(separator: " ").map{ String($0).lowercased() }
 						let matchingWordsCount = decryptedTestWords.reduce(0, { $0 + (dictionary.contains($1) ? 1 : 0) })
 //						if matchingWordsCount > 0 {print(matchingWordsCount)}
 //						print("HHH: \(matchingWordsCount)")
 //						print("JJJ: \(decryptedTestWords)")
 //						print("LLL: \(decryptedTest)")
-						/* We assume we have a valid text if more than 50% of the words match a real word */
-						if matchingWordsCount > (decryptedTestWords.count*50)/100 {
+						/* We assume we have a valid text if more than 75% of the
+						 * words match a real English word. */
+						if matchingWordsCount > (decryptedTestWords.count*75)/100 {
 							foundKey(k.map{ -$0 }, decryptedTest)
 							return
 						}
@@ -281,7 +291,7 @@ func vigenereUnknownKey(_ str: String, _ dictionary: Set<String>) throws -> Stri
 	queue.waitUntilAllOperationsAreFinished()
 //	print(n)
 	if let message = message {return message}
-	throw NSError(domain: "riddlebot", code: 6, userInfo: nil)
+	throw NSError(domain: "riddlebot", code: 5, userInfo: nil)
 }
 
 
@@ -300,13 +310,17 @@ do {
 	let loginRequest = LoginRequest(login: CommandLine.arguments[1])
 	print("Logging in...")
 	let loginResponse: LoginResponse = try session.synchronousFetch(url: URL(string: "/riddlebot/start", relativeTo: baseURL)!, httpMethod: "POST", httpBodyObject: loginRequest)
-
-	var riddleURL = URL(string: loginResponse.riddlePath, relativeTo: baseURL)!
-	while true {
+	
+	var certificateURL: URL?
+	var riddleURL: URL? = URL(string: loginResponse.riddlePath, relativeTo: baseURL)!
+	while let nonNilRiddleURL = riddleURL {
+		riddleURL = nil
+		
 		let answer: RiddleAnswer
 		print()
-		print("Fetching riddle at URL \(riddleURL.absoluteURL)")
-		let riddle: Riddle = try session.synchronousFetch(url: riddleURL)
+		print("Fetching riddle at URL \(nonNilRiddleURL.absoluteURL)")
+		let riddle: Riddle = try session.synchronousFetch(url: nonNilRiddleURL)
+		
 		print("Got riddle \(riddle)")
 		switch riddle.riddleType {
 		case .reverse(let text):            answer = RiddleAnswer(answer: String(text.reversed()))
@@ -316,13 +330,18 @@ do {
 		case .caesarUnknownKey(let text):   try answer = RiddleAnswer(answer: caesarUnknownKey(text))
 		case .vigenereUnknownKey(let text): try answer = RiddleAnswer(answer: vigenereUnknownKey(text, words))
 		}
+		
 		print("Sending riddle response \(answer)")
-		let response: RiddleAnswerResponse = try session.synchronousFetch(url: riddleURL, httpMethod: "POST", httpBodyObject: answer)
-		guard let nextRiddlePath = response.nextRiddlePath else {
-			throw NSError(domain: "riddlebot", code: 5, userInfo: nil)
+		let response: RiddleAnswerResponse = try session.synchronousFetch(url: nonNilRiddleURL, httpMethod: "POST", httpBodyObject: answer)
+		switch response {
+		case .correct(let nextRiddlePath):    riddleURL      = URL(string: nextRiddlePath,  relativeTo: baseURL)!
+		case .completed(let certificatePath): certificateURL = URL(string: certificatePath, relativeTo: baseURL)!
 		}
-		riddleURL = URL(string: nextRiddlePath, relativeTo: baseURL)!
 	}
+	guard let nonNilCertificateURL = certificateURL else {
+		throw NSError(domain: "riddlebot", code: 6, userInfo: nil)
+	}
+	print("Certificate URL: \(nonNilCertificateURL.absoluteURL)")
 } catch {
 	print("Got error \(error)")
 	exit(1)
