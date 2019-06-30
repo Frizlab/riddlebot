@@ -176,7 +176,7 @@ func caesar(_ str: String, _ delta: CChar) -> String {
 	return vigenere(str, [delta])
 }
 
-func vigenere(_ str: String, _ deltas: [CChar]) -> String {
+func vigenere(_ str: String, _ deltas: [CChar], incrementCounterForNonLetters: Bool = false) -> String {
 	assert(deltas.count > 0)
 	assert(deltas.first{ $0 >= 26 || $0 <= -26 } == nil)
 	var ret = [CChar]()
@@ -187,9 +187,9 @@ func vigenere(_ str: String, _ deltas: [CChar]) -> String {
 	let space = (z - a + 1), SPACE = (Z - A + 1)
 	for c in str.utf8CString {
 		switch c {
-		case a...z: ret.append((c + deltas[i] - a + space)%space + a); i = (i + 1)%deltas.count
-		case A...Z: ret.append((c + deltas[i] - A + SPACE)%SPACE + A); i = (i + 1)%deltas.count
-		default: ret.append(c)
+		case a...z: ret.append((c + deltas[i] - a + space*2)%space + a); i = (i + 1)%deltas.count
+		case A...Z: ret.append((c + deltas[i] - A + SPACE*2)%SPACE + A); i = (i + 1)%deltas.count
+		default: ret.append(c); if incrementCounterForNonLetters {i = (i + 1)%deltas.count}
 		}
 	}
 	return String(utf8String: ret)!
@@ -235,7 +235,7 @@ class FindVigenereOperation : Operation {
 //						q.sync{ n+=1 }
 						if isCancelled {return}
 						let k = [-CChar(k1), -CChar(k2), -CChar(k3), -CChar(k4)]
-						let decryptedTest = vigenere(str, k)
+						let decryptedTest = vigenere(str, k, incrementCounterForNonLetters: false)
 						let decryptedTestWords = decryptedTest.split(separator: " ").map{ String($0).lowercased() }
 						let matchingWordsCount = decryptedTestWords.reduce(0, { $0 + (dictionary.contains($1) ? 1 : 0) })
 //						if matchingWordsCount > 0 {print(matchingWordsCount)}
