@@ -240,6 +240,7 @@ class FindVigenereOperation : Operation {
 //						if matchingWordsCount > 0 {print(matchingWordsCount)}
 //						print("HHH: \(matchingWordsCount)")
 //						print("JJJ: \(decryptedTestWords)")
+//						print("LLL: \(decryptedTest)")
 						/* We assume we have a valid text if more than 25% of the words match a real word */
 						if matchingWordsCount > (decryptedTestWords.count*25)/100 {
 							foundKey(k.map{ -$0 }, decryptedTest)
@@ -267,8 +268,11 @@ func vigenereUnknownKey(_ str: String, _ dictionary: Set<String>) throws -> Stri
 			queue.cancelAllOperations()
 		}
 	}
-	for i in 0..<13 {
-		queue.addOperation(FindVigenereOperation(string: str, minK1: i*2, maxK1: (i+1)*2, dictionary: dictionary, foundKeyHandler: foundKeyHandler))
+	let nOp = 13
+	let step = 26/nOp
+	assert(26%nOp == 0)
+	for i in 0..<nOp {
+		queue.addOperation(FindVigenereOperation(string: str, minK1: i*step, maxK1: (i+1)*step, dictionary: dictionary, foundKeyHandler: foundKeyHandler))
 	}
 	queue.waitUntilAllOperationsAreFinished()
 //	print(n)
