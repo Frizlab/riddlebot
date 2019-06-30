@@ -98,6 +98,8 @@ struct Riddle : Decodable {
 		case rot13(text: String)
 		case caesar(text: String, key: Int)
 		case vigenere(text: String, key: [Int])
+		case caesarUnknownKey(text: String)
+		case vigenereUnknownKey(text: String)
 		
 		init(from decoder: Decoder) throws {
 			let container = try decoder.container(keyedBy: CodingKeys.self)
@@ -106,9 +108,21 @@ struct Riddle : Decodable {
 			switch type {
 			case "reverse":  self = .reverse(text: text)
 			case "rot13":    self = .rot13(text: text)
-			case "caesar":   self = try .caesar(text: text, key: container.decode(Int.self, forKey: .riddleKey))
-			case "vigenere": self = try .vigenere(text: text, key: container.decode([Int].self, forKey: .riddleKey))
-			default: throw NSError(domain: "riddlebot", code: 2, userInfo: ["Unknown type": type, "Container": container])
+			case "caesar":
+				do {
+					self = try .caesar(text: text, key: container.decode(Int.self, forKey: .riddleKey))
+				} catch {
+					/* We assume it’s the missing key error… */
+					self = .caesarUnknownKey(text: text)
+				}
+			case "vigenere":
+				do {
+					self = try .vigenere(text: text, key: container.decode([Int].self, forKey: .riddleKey))
+				} catch {
+					/* We assume it’s the missing key error… */
+					self = .vigenereUnknownKey(text: text)
+				}
+			default: throw NSError(domain: "riddlebot", code: 3, userInfo: ["Unknown type": type, "Container": container])
 			}
 		}
 		
@@ -180,11 +194,93 @@ func vigenere(_ str: String, _ deltas: [CChar]) -> String {
 	return String(utf8String: ret)!
 }
 
+func caesarUnknownKey(_ str: String) throws -> String {
+	for k in 0..<26 {
+		let decryptedTest = caesar(str, CChar(k))
+		/* VERY basic verification of correct decryption ^^ */
+		if decryptedTest.lowercased().contains(" a ") {
+			return decryptedTest
+		}
+	}
+	throw NSError(domain: "riddlebot", code: 4, userInfo: nil)
+}
+
+//var n = 0
+//let q = DispatchQueue(label: "hello")
+class FindVigenereOperation : Operation {
+	
+	let str: String
+	let minK1: Int
+	let maxK1: Int
+	let dictionary: Set<String>
+	
+	let foundKey: (_ key: [CChar], _ message: String) -> Void
+	
+	init(string: String, minK1 m: Int, maxK1 M: Int, dictionary d: Set<String>, foundKeyHandler: @escaping (_ key: [CChar], _ message: String) -> Void) {
+		str = string
+		minK1 = m
+		maxK1 = M
+		dictionary = d
+		foundKey = foundKeyHandler
+		super.init()
+	}
+	
+	override func main() {
+		/* We know the key size is 4 */
+		for k1 in minK1..<maxK1 {
+			for k2 in 0..<26 {
+				for k3 in 0..<26 {
+					for k4 in 0..<26 {
+//						q.sync{ n+=1 }
+						if isCancelled {return}
+						let k = [-CChar(k1), -CChar(k2), -CChar(k3), -CChar(k4)]
+						let decryptedTest = vigenere(str, k)
+						let decryptedTestWords = decryptedTest.split(separator: " ").map{ String($0).lowercased() }
+						let matchingWordsCount = decryptedTestWords.reduce(0, { $0 + (dictionary.contains($1) ? 1 : 0) })
+//						if matchingWordsCount > 0 {print(matchingWordsCount)}
+//						print("HHH: \(matchingWordsCount)")
+//						print("JJJ: \(decryptedTestWords)")
+						/* We assume we have a valid text if more than 25% of the words match a real word */
+						if matchingWordsCount > (decryptedTestWords.count*25)/100 {
+							foundKey(k.map{ -$0 }, decryptedTest)
+							return
+						}
+					}
+				}
+			}
+		}
+	}
+	
+}
+
+func vigenereUnknownKey(_ str: String, _ dictionary: Set<String>) throws -> String {
+	var message: String?
+	let queue = OperationQueue()
+	let foundKeyHandler = {  (_ k: [CChar], _ m: String) in
+		message = m
+		queue.cancelAllOperations()
+	}
+	for i in 0..<13 {
+		queue.addOperation(FindVigenereOperation(string: str, minK1: i*2, maxK1: (i+1)*2, dictionary: dictionary, foundKeyHandler: foundKeyHandler))
+	}
+	queue.waitUntilAllOperationsAreFinished()
+//	print(n)
+	if let message = message {return message}
+	throw NSError(domain: "riddlebot", code: 6, userInfo: nil)
+}
+
 
 let baseURL = URL(string: "https://api.noopschallenge.com/")!
 let session = URLSession(configuration: URLSessionConfiguration.ephemeral)
 
 do {
+	let date = Date()
+	print("Reading words list...")
+	let wordsURL = URL(fileURLWithPath: #file).deletingLastPathComponent().appendingPathComponent("words.txt")
+	let wordsString = try String(contentsOf: wordsURL)
+	let words = Set(wordsString.split(separator: "\n").map(String.init))
+	print("Found \(words.count) words in \(-date.timeIntervalSinceNow) seconds")
+	
 	let loginRequest = LoginRequest(login: CommandLine.arguments[1])
 	print("Logging in...")
 	let loginResponse: LoginResponse = try session.synchronousFetch(url: URL(string: "/riddlebot/start", relativeTo: baseURL)!, httpMethod: "POST", httpBodyObject: loginRequest)
@@ -201,11 +297,13 @@ do {
 		case .rot13(let text):              answer = RiddleAnswer(answer: rot13(text))
 		case .caesar(let text, let key):    answer = RiddleAnswer(answer: caesar(text, -CChar(key)))
 		case .vigenere(let text, let key):  answer = RiddleAnswer(answer: vigenere(text, key.map{ -CChar($0) }))
+		case .caesarUnknownKey(let text):   try answer = RiddleAnswer(answer: caesarUnknownKey(text))
+		case .vigenereUnknownKey(let text): try answer = RiddleAnswer(answer: vigenereUnknownKey(text, words))
 		}
 		print("Sending riddle response \(answer)")
 		let response: RiddleAnswerResponse = try session.synchronousFetch(url: riddleURL, httpMethod: "POST", httpBodyObject: answer)
 		guard let nextRiddlePath = response.nextRiddlePath else {
-			throw NSError(domain: "riddlebot", code: 3, userInfo: nil)
+			throw NSError(domain: "riddlebot", code: 5, userInfo: nil)
 		}
 		riddleURL = URL(string: nextRiddlePath, relativeTo: baseURL)!
 	}
